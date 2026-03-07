@@ -1738,6 +1738,11 @@ document.addEventListener('touchstart',function(e){
 // ── AUTO LOGIN ──
 try{
   var saved=JSON.parse(localStorage.getItem('hl_user'));
+  if(!saved||!saved.id){
+    // Fall back to quiz game session (same account, different key)
+    var tv=JSON.parse(localStorage.getItem('tevello_user'));
+    if(tv&&tv.id)saved={id:tv.id,email:tv.username,displayName:tv.displayName||tv.username};
+  }
   if(saved&&saved.id){S.user=saved;afterLogin();}
 }catch(e){}
 
