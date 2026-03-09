@@ -1640,15 +1640,25 @@ async function toggleRecord(){
       S.recMediaRecorder=new MediaRecorder(stream);
       S.recMediaRecorder.ondataavailable=e=>{if(e.data.size>0)S.recChunks.push(e.data);};
       S.recMediaRecorder.onstop=()=>{
-        S.recBlob=new Blob(S.recChunks,{type:'audio/webm'});
+        // Use the actual recorded mime type — Safari records mp4/aac, not webm
+        var mime=S.recMediaRecorder.mimeType||'audio/webm';
+        S.recBlob=new Blob(S.recChunks,{type:mime});
         stream.getTracks().forEach(t=>t.stop());
-        var url=URL.createObjectURL(S.recBlob);
         var pb=$('recPlayback');
-        if(pb){pb.classList.remove('hidden');pb.innerHTML=`<audio controls src="${url}" style="width:100%;"></audio>`;}
-        var sb=$('recSubmit');if(sb)sb.classList.remove('hidden');
-        var rb=$('recBtn');if(rb){rb.classList.remove('recording');rb.textContent='🎤';}
-        var rs=$('recStatus');if(rs)rs.textContent='TAP TO RE-RECORD';
+        var sb=$('recSubmit');
+        var rb=$('recBtn');
+        var rs=$('recStatus');
+        if(rb){rb.classList.remove('recording');rb.textContent='🎤';}
+        if(rs)rs.textContent='TAP TO RE-RECORD';
         S.recRecording=false;
+        // iOS Safari cannot reliably play back createObjectURL blobs from MediaRecorder.
+        // Convert to a base64 data: URL instead, which Safari handles correctly.
+        var reader=new FileReader();
+        reader.onload=function(){
+          if(pb){pb.classList.remove('hidden');pb.innerHTML='<audio controls src="'+reader.result+'" style="width:100%;"></audio>';}
+          if(sb)sb.classList.remove('hidden');
+        };
+        reader.readAsDataURL(S.recBlob);
       };
       S.recMediaRecorder.start();S.recRecording=true;
       var rb=$('recBtn');if(rb){rb.classList.add('recording');rb.textContent='⏹';}
@@ -2889,6 +2899,13 @@ function astRunGame(){
   astG.firstTryHits=0;astG.wrongThisWord=false;astG.startTime=Date.now();
   astG._flash=null;astG._tryAgain=0;astG._shake=0;
 
+  // Mobile speed compensation: asteroids travel a shorter pixel distance on small
+  // screens, so scale speed up proportionally to match desktop "feel".
+  // At 768px wide we apply ~1.9×; scales linearly down to 1× at 1200px+.
+  var _sw=window.innerWidth;
+  // Clamp between 1.0 (desktop ≥1200px) and 2.0 (320px phone)
+  astG.mobileSpeedMult=Math.min(2.0, Math.max(1.0, (1200-_sw) / (1200-320) + 1.0));
+
   astG.stars=[];
   for(var i=0;i<80;i++) astG.stars.push({x:Math.random(),y:Math.random(),r:Math.random()*1.4+0.3,blink:Math.random()*60});
 
@@ -2994,7 +3011,7 @@ function astSpawnWave(){
       isCorrect:item.isCorrect,
       r,
       wobble:Math.random()*Math.PI*2,
-      speed:(0.9+g.score*0.07+(Math.random()*0.3)) * (S.astDifficulty==='easy' ? 0.5 : 1),
+      speed:(0.9+g.score*0.07+(Math.random()*0.3)) * (S.astDifficulty==='easy' ? 0.5 : 1) * g.mobileSpeedMult,
       hit:false,
     });
   });
@@ -3033,7 +3050,7 @@ function astUpdate(){
     return;
   }
 
-  var speed_base=(0.9+g.score*0.07) * (S.astDifficulty==='easy' ? 0.5 : 1);
+  var speed_base=(0.9+g.score*0.07) * (S.astDifficulty==='easy' ? 0.5 : 1) * g.mobileSpeedMult;
 
   // Move asteroids
   for(var i=g.asteroids.length-1;i>=0;i--){
